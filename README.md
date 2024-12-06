@@ -8,7 +8,8 @@ Installation We assume Python is already installed; if not, refer to the followi
 
 Python Installation
 
-Clone the repository: bash Copy code git clone https://github.com/ErhanCitil/fruit-catcher.git Navigate to the project directory: bash Copy code cd fruit-catcher Install the required libraries: bash Copy code pip install -r requirements.txt Usage Start the game by running the following command: bash Copy code python main.py License This project is licensed under the MIT license. See the LICENSE file for details.
+Clone the repository: bash Copy code git clone https://github.com/DeSagunMariaCyril/Fruit-Catcher.git and https://github.com/Ecka9/Fruit-Catcher.git  Navigate to the project directory: 
+bash Copy code cd fruit-catcher Install the required libraries: bash Copy code pip install -r requirements.txt Usage Start the game by running the following command: bash Copy code python main.py License This project is licensed under the MIT license. See the LICENSE file for details.
 
 Local Development Environment This section provides an overview of my development environment during the creation of the code.
 
