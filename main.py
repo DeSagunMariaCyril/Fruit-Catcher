@@ -1,11 +1,12 @@
 import pygame
 import random
 import time
+import math
 
 # Initialize Pygame
 pygame.init()
 
-# Screen dimensions for landscape
+# Screen dimensions
 screen_width = 1000
 screen_height = 600
 
@@ -46,16 +47,15 @@ game_over_font = pygame.font.SysFont("pressstart2p", 80)
 shield_font = pygame.font.SysFont("comicsansms", 30)
 
 # Define object sizes and speeds
-basket_width = 120
-basket_height = 200
+basket_radius = 60  # Basket now behaves as a circle for collision detection
 basket_speed = 15
 fruit_speed = 5
 
 # Game variables
 score = 0
 level = 1
-basket_x = (screen_width - basket_width) // 2
-basket_y = screen_height - basket_height - 10
+basket_x = screen_width // 2
+basket_y = screen_height - basket_radius - 10
 achievement_message = ""
 objects = []
 bomb_chance = 0.1
@@ -142,11 +142,19 @@ def show_instructions():
                 game_loop()  # Start the game after the instructions
                 waiting_for_start = False
 
+# Function to show feedback message (without blocking game loop)
+def show_feedback_message(message, color, display_time=2000):
+    global feedback_message, feedback_start_time
+    feedback_message = (message, color)
+    feedback_start_time = pygame.time.get_ticks()
+    
 # Main game loop
 def game_loop():
-    global score, basket_x, next_object_time, bomb_chance, level, achievement_message, shield_active, double_points_active, lives, missed_fruits, fruit_speed, objects, shield_count, shield_timer, last_shield_spawn, double_points_timer
+    global score, basket_x, next_object_time, bomb_chance, level, achievement_message, shield_active, double_points_active, lives, missed_fruits, fruit_speed, objects, shield_count, shield_timer, last_shield_spawn, double_points_timer, feedback_message, feedback_start_time
 
-    objects = []
+    objects = []  # Reset objects list at the start of each game
+    feedback_message = None  # No feedback message initially
+    feedback_start_time = 0  # Start time for feedback messages
     running = True
 
     while running:
@@ -158,134 +166,122 @@ def game_loop():
 
         # Basket movement
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and basket_x > 0:
+        if keys[pygame.K_LEFT] and basket_x > basket_radius:
             basket_x -= basket_speed
-        if keys[pygame.K_RIGHT] and basket_x < screen_width - basket_width:
+        if keys[pygame.K_RIGHT] and basket_x < screen_width - basket_radius:
             basket_x += basket_speed
 
         # Spawn objects (including shield and double points)
         next_object_time -= 1
         if next_object_time <= 0 and len(objects) < 10:
-            object_x = random.randint(0, screen_width - basket_width)
+            object_x = random.randint(0, screen_width - basket_radius * 2)
             if random.random() < bomb_chance:
                 object_img = bomb_img
-            elif score >= (last_shield_spawn + 80):  # Only spawn the shield once every 80 points
+            elif random.random() < 0.1:  # 10% chance to spawn a shield
                 object_img = shield_img
-                last_shield_spawn = score  # Update the last shield spawn to current score
-            elif random.random() < 0.2:  # 20% chance to spawn double points
+            elif random.random() < 0.1:  # 10% chance to spawn double points
                 object_img = double_points_img
             else:
                 object_img = random.choice(healthy_fruit_images + rotten_fruit_images)
             objects.append({"img": object_img, "x": object_x, "y": -100})
-            next_object_time = random.randint(60, 120)
+            next_object_time = random.randint(100, 300)
 
-        # Move objects and handle collisions
+        # Move objects
         new_objects = []
-        basket_rect = pygame.Rect(basket_x, basket_y, basket_width, basket_height)
         for obj in objects:
-            obj["y"] += fruit_speed
-            obj_rect = pygame.Rect(obj["x"], obj["y"], 80, 80)
-
-            if obj_rect.colliderect(basket_rect):
+            obj["y"] += fruit_speed  # Move the object downwards
+            if obj["y"] > screen_height:
+                continue  # Ignore objects that go out of screen
+            if obj["y"] + basket_radius * 2 >= basket_y and abs(obj["x"] - basket_x) < basket_radius * 2:
                 if obj["img"] == bomb_img:
-                    if not shield_active:
-                        lives -= 1
-                        achievement_message = f"Boom! Lives left: {lives}"
-                        if lives <= 0:
-                            running = False
-                    else:
-                        achievement_message = "Shield protected you!"
-                        shield_active = False  # Deactivate shield after use
-                        shield_count -= 1  # Decrement shield count
+                    lives -= 1
+                    show_feedback_message("Bomb Caught!", (255, 0, 0))
                 elif obj["img"] in healthy_fruit_images:
-                    score += 20 if double_points_active else 10
-                    achievement_message = "Healthy fruit caught!"
+                    score += 5
+                    show_feedback_message("Healthy Fruit Caught!", (0, 255, 0))
                 elif obj["img"] in rotten_fruit_images:
                     score -= 5
+                    if score < 0:
+                        score = 0
                     missed_fruits += 1
-                    achievement_message = f"Oops! Rotten fruit missed! Total missed: {missed_fruits}"
+                    show_feedback_message("Rotten Fruit Caught!", (255, 165, 0))
                 elif obj["img"] == shield_img:
-                    if not shield_active:  # Only catch a new shield if it's not active
-                        shield_active = True
-                        shield_count += 1  # Increment shield count
-                        shield_timer = time.time()  # Record the time when shield was caught
-                        achievement_message = "Shield activated!"
+                    shield_count += 1
+                    show_feedback_message("Shield Activated!", (0, 0, 255))
                 elif obj["img"] == double_points_img:
                     double_points_active = True
-                    double_points_timer = time.time()  # Start the timer for double points
-                    achievement_message = "Double points activated!"
+                    double_points_timer = time.time()
+                    show_feedback_message("Double Points Activated!", (255, 215, 0))
 
-            elif obj["y"] < screen_height:
-                new_objects.append(obj)
+                continue  # Skip to next object
+
+            new_objects.append(obj)
 
         objects = new_objects
 
-        # Check if the shield timer has expired (5 seconds)
-        if shield_active and time.time() - shield_timer > shield_lifetime:
-            shield_active = False
-            achievement_message = "Shield expired!"
-
-        # Check if double points timer has expired (10 seconds)
-        if double_points_active and time.time() - double_points_timer > 10:
-            double_points_active = False
-            achievement_message = "Double points expired!"
-
-        # Level progression every 100 points
-        new_level = score // 100 + 1
-        if new_level > level:
-            level = new_level
-            fruit_speed += 1
-            achievement_message = f"Level {level} unlocked!"
-
-        # After Level 5, stop the game and show the message
-        if level >= 5:
-            achievement_message = "Congratulations! You've completed the game!"
-            final_message()
-
-        # Render score and lives
-        score_text = font.render(f"Score: {score}", True, (0, 0, 0))
-        lives_text = font.render(f"Lives: {lives}", True, (0, 0, 0))
-        level_text = font.render(f"Level: {level}", True, (0, 0, 0))
-        achievement_text = feedback_font.render(achievement_message, True, (0, 255, 0))
-
-        screen.blit(score_text, (10, 10))
-        screen.blit(level_text, (screen_width - 200, 10))
-        screen.blit(lives_text, (10, 50))
-        screen.blit(achievement_text, (screen_width // 2 - achievement_text.get_width() // 2, 50))
-
-        # Draw basket and objects
-        screen.blit(fruit_basket, (basket_x, basket_y))
+        # Draw objects
         for obj in objects:
             screen.blit(obj["img"], (obj["x"], obj["y"]))
 
-        # Display shield status and countdown if active
-        if shield_active:
-            remaining_time = max(0, int(shield_lifetime - (time.time() - shield_timer)))
-            shield_text = shield_font.render(f"Shield Active: {remaining_time}s", True, (0, 255, 0))
-            screen.blit(shield_text, (screen_width // 2 - shield_text.get_width() // 2, screen_height // 2 + 60))
+        # Draw basket
+        basket_rect = fruit_basket.get_rect(center=(basket_x, basket_y))
+        screen.blit(fruit_basket, basket_rect)
 
-        # Display double points status and countdown if active
+        # Display score, level, lives, shield count, and double points
+        score_text = font.render(f"Score: {score}", True, (0, 0, 0))
+        lives_text = font.render(f"Lives: {lives}", True, (0, 0, 0))
+        level_text = font.render(f"Level: {level}", True, (0, 0, 0))
+        shield_text = shield_font.render(f"Shields: {shield_count}", True, (0, 0, 255))
+        screen.blit(score_text, (20, 20))
+        screen.blit(lives_text, (screen_width - lives_text.get_width() - 20, 20))
+        screen.blit(level_text, (screen_width // 2 - level_text.get_width() // 2, 20))
+        screen.blit(shield_text, (20, 70))
+
+        # Show feedback message
+        if feedback_message:
+            message, color = feedback_message
+            feedback_text = feedback_font.render(message, True, color)
+            screen.blit(feedback_text, (screen_width // 2 - feedback_text.get_width() // 2, screen_height // 2))
+
+        # Check if the feedback message time has passed
+        if feedback_message and pygame.time.get_ticks() - feedback_start_time > 2000:
+            feedback_message = None  # Remove feedback after 2 seconds
+
+        # Level up check
+        if score >= level * 100:
+            level += 1
+            show_feedback_message(level_feedback[level - 1], (0, 255, 0))
+
+        # Double points active
         if double_points_active:
-            remaining_time = max(0, int(10 - (time.time() - double_points_timer)))
-            double_points_text = shield_font.render(f"Double Points: {remaining_time}s", True, (0, 0, 255))
-            screen.blit(double_points_text, (screen_width // 2 - double_points_text.get_width() // 2, screen_height // 2 + 100))
+            elapsed_time = time.time() - double_points_timer
+            double_points_time_remaining = max(0, 10 - int(elapsed_time))  # Prevent going below 0
+            if double_points_time_remaining == 0:
+                double_points_active = False
+                show_feedback_message("Double Points Ended!", (255, 0, 0))
+            double_points_text = font.render(f"Double Points: {double_points_time_remaining}s", True, (255, 215, 0))
+            screen.blit(double_points_text, (screen_width // 2 - double_points_text.get_width() // 2, 70))
 
+        # Update screen
         pygame.display.update()
+
+        # Check for game over
+        if lives <= 0:
+            game_over()
+
         clock.tick(60)
 
-    # Game over
-    game_over()
-
-# Function to display game over screen
+# Game over function
 def game_over():
-    global score
-    screen.fill((0, 0, 0))
+    screen.fill((255, 255, 255))
     game_over_text = game_over_font.render("GAME OVER", True, (255, 0, 0))
-    score_text = font.render(f"Your score: {score}", True, (255, 255, 255))
-    screen.blit(game_over_text, (screen_width // 2 - game_over_text.get_width() // 2, screen_height // 2 - 50))
-    screen.blit(score_text, (screen_width // 2 - score_text.get_width() // 2, screen_height // 2 + 50))
+    screen.blit(game_over_text, (screen_width // 2 - game_over_text.get_width() // 2, screen_height // 4))
 
-    retry_button_rect = screen.blit(retry_button, (screen_width // 2 - retry_button.get_width() // 2, screen_height // 2 + 120))
+    score_text = font.render(f"Final Score: {score}", True, (0, 0, 0))
+    screen.blit(score_text, (screen_width // 2 - score_text.get_width() // 2, screen_height // 2))
+
+    retry_button_rect = screen.blit(retry_button, (screen_width // 2 - retry_button.get_width() // 2, screen_height // 2 + 100))
+
     pygame.display.update()
 
     waiting_for_retry = True
@@ -296,21 +292,8 @@ def game_over():
                 quit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if retry_button_rect.collidepoint(event.pos):
-                    score = 0
-                    level = 1
-                    lives = 3
-                    game_loop()
+                    game_loop()  # Restart the game
                     waiting_for_retry = False
 
-# Function to display final completion message
-def final_message():
-    screen.fill((255, 255, 255))
-    message = game_over_font.render("Congratulations! You completed the game!", True, (0, 255, 0))
-    screen.blit(message, (screen_width // 2 - message.get_width() // 2, screen_height // 2 - 50))
-    pygame.display.update()
-
-    time.sleep(5)  # Wait for 5 seconds before returning to the main menu
-    main_menu()
-
-# Start the game
+# Run the game
 main_menu()
