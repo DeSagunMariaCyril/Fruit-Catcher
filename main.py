@@ -38,14 +38,12 @@ shield_img = pygame.transform.scale(shield_img, (80, 80))
 double_points_img = pygame.transform.scale(double_points_img, (80, 80))
 retry_button = pygame.transform.scale(retry_button, (400, 150))
 
-# Load game-style fonts (no need to download custom fonts)
-title_font = pygame.font.SysFont("pressstart2p", 80)  # Retro, pixel-style font for the title
-feedback_font = pygame.font.SysFont("pressstart2p", 50)  # For feedback messages
-font = pygame.font.SysFont("comicsansms", 40)  # Bold, clean font for score, level, etc.
-game_over_font = pygame.font.SysFont("pressstart2p", 80)  # Pixel-style font for "Game Over"
-
-# Define smaller font for shield protection
-shield_font = pygame.font.SysFont("comicsansms", 30)  # Smaller font size for shield count
+# Load game-style fonts
+title_font = pygame.font.SysFont("pressstart2p", 80)
+feedback_font = pygame.font.SysFont("pressstart2p", 50)
+font = pygame.font.SysFont("comicsansms", 40)
+game_over_font = pygame.font.SysFont("pressstart2p", 80)
+shield_font = pygame.font.SysFont("comicsansms", 30)
 
 # Define object sizes and speeds
 basket_width = 120
@@ -66,10 +64,11 @@ shield_active = False
 double_points_active = False
 lives = 5
 missed_fruits = 0
-shield_count = 0  # Track how many shields have been caught
-shield_timer = 0  # To track the time the shield was activated
-shield_lifetime = 5  # Shield stays active for 5 seconds
-last_shield_spawn = 0  # Last time a shield was spawned
+shield_count = 0
+shield_timer = 0
+shield_lifetime = 5
+last_shield_spawn = 0
+double_points_timer = 0  # Track double points duration
 
 # Level feedback messages
 level_feedback = [
@@ -110,15 +109,42 @@ def main_menu():
                 quit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if play_button_rect.collidepoint(event.pos):
-                    game_loop()
+                    show_instructions()  # Show instructions before starting the game
                     menu_running = False
                 elif quit_button_rect.collidepoint(event.pos):
                     pygame.quit()
                     quit()
 
+# Function to display the instructions screen
+def show_instructions():
+    screen.fill((255, 255, 255))
+    instructions_text1 = font.render("INSTRUCTIONS:", True, (0, 0, 0))
+    instructions_text2 = font.render("Use the LEFT and RIGHT arrow keys", True, (0, 0, 0))
+    instructions_text3 = font.render("to move the basket and catch fruits.", True, (0, 0, 0))
+    instructions_text4 = font.render("Avoid rotten fruits and bombs!", True, (0, 0, 0))
+    instructions_text5 = font.render("Press any key to start the game.", True, (255, 0, 0))
+
+    screen.blit(instructions_text1, (screen_width // 2 - instructions_text1.get_width() // 2, screen_height // 4))
+    screen.blit(instructions_text2, (screen_width // 2 - instructions_text2.get_width() // 2, screen_height // 4 + 50))
+    screen.blit(instructions_text3, (screen_width // 2 - instructions_text3.get_width() // 2, screen_height // 4 + 100))
+    screen.blit(instructions_text4, (screen_width // 2 - instructions_text4.get_width() // 2, screen_height // 4 + 150))
+    screen.blit(instructions_text5, (screen_width // 2 - instructions_text5.get_width() // 2, screen_height // 4 + 200))
+
+    pygame.display.update()
+
+    waiting_for_start = True
+    while waiting_for_start:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+            if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                game_loop()  # Start the game after the instructions
+                waiting_for_start = False
+
 # Main game loop
 def game_loop():
-    global score, basket_x, next_object_time, bomb_chance, level, achievement_message, shield_active, double_points_active, lives, missed_fruits, fruit_speed, objects, shield_count, shield_timer, last_shield_spawn
+    global score, basket_x, next_object_time, bomb_chance, level, achievement_message, shield_active, double_points_active, lives, missed_fruits, fruit_speed, objects, shield_count, shield_timer, last_shield_spawn, double_points_timer
 
     objects = []
     running = True
@@ -137,7 +163,7 @@ def game_loop():
         if keys[pygame.K_RIGHT] and basket_x < screen_width - basket_width:
             basket_x += basket_speed
 
-        # Spawn objects (including shield)
+        # Spawn objects (including shield and double points)
         next_object_time -= 1
         if next_object_time <= 0 and len(objects) < 10:
             object_x = random.randint(0, screen_width - basket_width)
@@ -146,6 +172,8 @@ def game_loop():
             elif score >= (last_shield_spawn + 80):  # Only spawn the shield once every 80 points
                 object_img = shield_img
                 last_shield_spawn = score  # Update the last shield spawn to current score
+            elif random.random() < 0.2:  # 20% chance to spawn double points
+                object_img = double_points_img
             else:
                 object_img = random.choice(healthy_fruit_images + rotten_fruit_images)
             objects.append({"img": object_img, "x": object_x, "y": -100})
@@ -182,6 +210,11 @@ def game_loop():
                         shield_count += 1  # Increment shield count
                         shield_timer = time.time()  # Record the time when shield was caught
                         achievement_message = "Shield activated!"
+                elif obj["img"] == double_points_img:
+                    double_points_active = True
+                    double_points_timer = time.time()  # Start the timer for double points
+                    achievement_message = "Double points activated!"
+
             elif obj["y"] < screen_height:
                 new_objects.append(obj)
 
@@ -191,6 +224,11 @@ def game_loop():
         if shield_active and time.time() - shield_timer > shield_lifetime:
             shield_active = False
             achievement_message = "Shield expired!"
+
+        # Check if double points timer has expired (10 seconds)
+        if double_points_active and time.time() - double_points_timer > 10:
+            double_points_active = False
+            achievement_message = "Double points expired!"
 
         # Level progression every 100 points
         new_level = score // 100 + 1
@@ -225,6 +263,12 @@ def game_loop():
             remaining_time = max(0, int(shield_lifetime - (time.time() - shield_timer)))
             shield_text = shield_font.render(f"Shield Active: {remaining_time}s", True, (0, 255, 0))
             screen.blit(shield_text, (screen_width // 2 - shield_text.get_width() // 2, screen_height // 2 + 60))
+
+        # Display double points status and countdown if active
+        if double_points_active:
+            remaining_time = max(0, int(10 - (time.time() - double_points_timer)))
+            double_points_text = shield_font.render(f"Double Points: {remaining_time}s", True, (0, 0, 255))
+            screen.blit(double_points_text, (screen_width // 2 - double_points_text.get_width() // 2, screen_height // 2 + 100))
 
         pygame.display.update()
         clock.tick(60)
@@ -265,7 +309,7 @@ def final_message():
     screen.blit(message, (screen_width // 2 - message.get_width() // 2, screen_height // 2 - 50))
     pygame.display.update()
 
-    time.sleep(5)
+    time.sleep(5)  # Wait for 5 seconds before returning to the main menu
     main_menu()
 
 # Start the game
