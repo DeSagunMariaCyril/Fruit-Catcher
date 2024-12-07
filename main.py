@@ -46,7 +46,7 @@ game_over_font = pygame.font.SysFont("pressstart2p", 80)
 shield_font = pygame.font.SysFont("comicsansms", 30)
 
 # Define object sizes and speeds
-basket_radius = 60  # Basket now behaves as a circle for collision detection
+basket_radius = 80  # Basket now behaves as a circle for collision detection
 basket_speed = 15
 fruit_speed = 5  # Initial fruit fall speed
 
